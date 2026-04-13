@@ -1,200 +1,135 @@
-/** 
- * АНАЛОГ ТАБЛИЦЫ "СГрафик_работы" 
- * Поля: name (название схемы), brigade (номер), startDate (дата начала), cycle (часы по дням)
+/**
+ * Данные графиков бригад
  */
-const SETTINGS = [
-    { name: " ", brigade: 1, startDate: "2021-12-31", cycle: ["У", "У", "", "Н", "Н", "", "", ""] },
-    { name: " ", brigade: 2, startDate: "2022-01-02", cycle: ["У", "У", "", "Н", "Н", "", "", ""] },
-    { name: " ", brigade: 3, startDate: "2021-12-27", cycle: ["У", "У", "", "Н", "Н", "", "", ""] },
-    { name: " ", brigade: 4, startDate: "2021-12-29", cycle: ["У", "У", "", "Н", "Н", "", "", ""] }
-];
+const schedules = {
+    1: { start: '2024-12-30', pattern: ['Д', 'Д', '', 'Н', 'Н', '', '', ''] },
+    2: { start: '2025-01-01', pattern: ['Д', 'Д', '', 'Н', 'Н', '', '', ''] },
+    3: { start: '2025-01-03', pattern: ['Д', 'Д', '', 'Н', 'Н', '', '', ''] },
+    4: { start: '2024-12-28', pattern: ['Д', 'Д', '', 'Н', 'Н', '', '', ''] }
+};
 
 /**
- * ЛОГИКА VBA ФУНКЦИИ
+ * Основная функция отрисовки
  */
-function getHours(schemaName, brigadeNum, targetDate) {
-    // Ищем настройки для пары Схема + Бригада
-    const cfg = SETTINGS.find(s => s.name === schemaName && s.brigade === brigadeNum);
-    if (!cfg) return "";
+function render() {
+    const monthInput = document.getElementById('month');
+    const yearInput = document.getElementById('year');
+    const monthsCountInput = document.getElementById('monthsCount');
+    const daysFilterInput = document.getElementById('daysFilter');
 
-    const start = new Date(cfg.startDate);
-    const cycleLen = cfg.cycle.length;
+    if (!monthInput || !yearInput) return;
 
-    // Считаем разницу в днях (datadelta)
-    const diffInMs = targetDate.setHours(0,0,0,0) - start.setHours(0,0,0,0);
-    const dataDelta = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-
-    // Находим позицию в цикле (Mod)
-    let cyclePos = dataDelta % cycleLen;
-    if (cyclePos < 0) cyclePos += cycleLen; // Коррекция для дат до startDate
-
-    return cfg.cycle[cyclePos];
-}
-
-// Функция для установки текущей даты при загрузке
-function setCurrentDate() {
-    const now = new Date();
-    
-    // Month возвращает 0-11, поэтому прибавляем 1
-    document.getElementById('month').value = now.getMonth() + 1; 
-    document.getElementById('year').value = now.getFullYear();
-}
-
-function render() 
-{
-    const startMonth = parseInt(document.getElementById('month').value);
-    const startYear = parseInt(document.getElementById('year').value);
-    const monthsCount = parseInt(document.getElementById('monthsCount').value);
-    
-    // Читаем фильтр: разбиваем строку по запятой, превращаем в числа и фильтруем мусор
-    const filterInput = document.getElementById('daysFilter').value;
-    const selectedDays = filterInput ? filterInput.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d)) : [];
+    const month = parseInt(monthInput.value);
+    const year = parseInt(yearInput.value);
+    const monthsCount = parseInt(monthsCountInput.value) || 1;
+    const daysFilter = daysFilterInput.value;
 
     const container = document.getElementById('tables-container');
-    container.innerHTML = ""; 
+    container.innerHTML = ''; 
 
     for (let i = 0; i < monthsCount; i++) {
-        let currentPeriod = new Date(startYear, (startMonth - 1) + i, 1);
-        let m = currentPeriod.getMonth() + 1;
-        let y = currentPeriod.getFullYear();
-
-        // Определяем, какие дни рисовать
-        const daysInMonth = new Date(y, m, 0).getDate();
-        let daysToRender = [];
-        
-        if (selectedDays.length > 0) {
-            // Если фильтр есть — берем только те дни, что существуют в этом месяце
-            daysToRender = selectedDays.filter(d => d >= 1 && d <= daysInMonth);
-        } else {
-            // Если фильтра нет — рисуем стандартно 1..31
-            for (let d = 1; d <= daysInMonth; d++) daysToRender.push(d);
-        }
-
-        const tableWrapper = document.createElement('div');
-        tableWrapper.className = "month-wrapper";
-        tableWrapper.innerHTML = `
-            <h3>${currentPeriod.toLocaleString('ru-ru', {month: 'long', year: 'numeric'})}</h3>
-            <table>
-                <thead><tr class="days-header"></tr></thead>
-                <tbody class="tabel-body"></tbody>
-            </table>
-        `;
-        container.appendChild(tableWrapper);
-        
-        // Передаем список дней в функцию заполнения
-        fillTable(tableWrapper, m, y, daysToRender);
+        const currentMonth = ((month + i - 1) % 12) + 1;
+        const currentYear = year + Math.floor((month + i - 1) / 12);
+        container.appendChild(createTable(currentMonth, currentYear, daysFilter));
     }
-		
 }
 
-// Вспомогательная функция для классов (чтобы не дублировать код)
-function getClasses(date, isCurrentMonth, todayDay, isHeader = false) 
-	{
-			let classes = [];
-		
-		// Проверка выходного
-		if (date.getDay() === 0 || date.getDay() === 6) {
-			// Если это заголовок — яркий, если тело — приглушенный
-			classes.push(isHeader ? 'holiday_header' : 'holiday_body');
-		}
-		
-		// Проверка текущего дня
-		if (isCurrentMonth && date.getDate() === todayDay) {
-			classes.push('today-cell');
-		}
-		
-		return classes.join(' ');
-	}
-	
-function fillTable(wrapper, month, year, daysToRender) 
-	{
-		const headerRow = wrapper.querySelector('.days-header');
-		const tbody = wrapper.querySelector('.tabel-body');
-		const today = new Date();
-		const isCurrentMonth = (today.getMonth() + 1 === month && today.getFullYear() === year);
+function createTable(month, year, daysFilter) {
+    const table = document.createElement('table');
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthNames = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 
-		headerRow.innerHTML = '<th class="brigade-col">Бригада</th>';
-		
-		// Рисуем заголовки только для выбранных дней
-		daysToRender.forEach(d => {
-			const date = new Date(year, month - 1, d);
-			const classes = getClasses(date, isCurrentMonth, today.getDate(), true);
-			headerRow.innerHTML += `<th class="${classes}">${d}</th>`;
-		});
-		
-		 // Добавляем заголовок Итого
-		headerRow.innerHTML += `<th class="brigade-col" style="width:60px">Итого</th>`;
+    let filteredDays = [];
+    if (daysFilter.trim() !== "") {
+        filteredDays = daysFilter.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d));
+    }
 
-		SETTINGS.forEach(s => {
-			let tr = document.createElement('tr');
-			tr.innerHTML = `<td class="brigade-col">${s.name} Бриг. № ${s.brigade}</td>`;
-			
-			let stats = {}; // Объект для подсчета: { "У": 5, "Н": 3 }
-			
-			// Рисуем ячейки только для выбранных дней
-			daysToRender.forEach(d => {
-				const date = new Date(year, month - 1, d);
-				const val = getHours(s.name, s.brigade, date);
-				const classes = getClasses(date, isCurrentMonth, today.getDate());
-				// Считаем только непустые значения
-				if (val) {
-					stats[val] = (stats[val] || 0) + 1;
-				}							
-				
-				tr.innerHTML += `<td class="${classes}"><input type="text" value="${val}"></td>`;				
-			});
-			
-		 // Формируем строку итогов (например: "У:5 Н:4")
-				let totalText = Object.entries(stats)
-					.map(([key, count]) => `${key}:${count}`)
-					.join(' ');
+    let html = `<thead><tr><th colspan="${(filteredDays.length > 0 ? filteredDays.length : daysInMonth) + 2}" class="month-title">${monthNames[month - 1]} ${year} Г.</th></tr>`;
+    html += `<tr><th class="brigade-col">Бригада</th>`;
 
-				tr.innerHTML += `<td class="brigade-col" style="font-size:13px; text-align:center;">${totalText}</td>`;			
-			
-			tbody.appendChild(tr);
-		});
-	}
+    for (let d = 1; d <= daysInMonth; d++) {
+        if (filteredDays.length === 0 || filteredDays.includes(d)) {
+            const date = new Date(year, month - 1, d);
+            const dayOfWeek = date.getDay();
+            const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+            html += `<th class="${isWeekend ? 'weekend' : ''}">${d}</th>`;
+        }
+    }
+    html += `<th>Итого</th></tr></thead><tbody>`;
 
-document.addEventListener('DOMContentLoaded', function() {
-    const listContainer = document.getElementById('list-items');
+    for (let bId in schedules) {
+        html += `<tr><td class="brigade-col">Бриг. № ${bId}</td>`;
+        let dayCount = 0;
+        let nightCount = 0;
 
-    // Тестовые данные (позже они будут приходить из базы данных)
-    const shifts = [
-        { date: '2023-10-25', brigade: '№1', shift: 'Дневная', note: 'Склад А' },
-        { date: '2023-10-25', brigade: '№2', shift: 'Ночная', note: 'Склад Б' },
-        { date: '2023-10-26', brigade: '№1', shift: 'Дневная', note: 'Пересменка' }
-    ];
+        for (let d = 1; d <= daysInMonth; d++) {
+            const res = getShift(bId, d, month, year);
+            if (res === 'Д') dayCount++;
+            if (res === 'Н') nightCount++;
 
-    // Рисуем строки списка
-    shifts.forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'shift-row'; // Добавь этот класс в CSS для красоты
-        row.style.cursor = 'pointer';
-        row.style.padding = '10px';
-        row.style.borderBottom = '1px solid #ccc';
-        
-        // Формируем текст строки
-        row.innerHTML = `<strong>${item.date}</strong>; БРИГАДА ${item.brigade}; ${item.shift}; <em>${item.note}</em>`;
+            if (filteredDays.length === 0 || filteredDays.includes(d)) {
+                let cellClass = '';
+                if (res === 'Д') cellClass = 'day';
+                if (res === 'Н') cellClass = 'night';
 
-        // Тот самый клик для бронирования
-        row.onclick = function() {
-            if (confirm(`Забронировать смену на ${item.date}?`)) {
-                reserveShift(item);
-            }
-        };
+                if (res === 'Д' || res === 'Н') {
+                    cellClass += ' clickable';
+                }
 
-        listContainer.appendChild(row);
+                const dStr = String(d).padStart(2, '0');
+                const mStr = String(month).padStart(2, '0');
+                const dateStr = `${year}-${mStr}-${dStr}`;
+
+                html += '<td class="' + cellClass + '" data-date="' + dateStr + '" data-brigade="' + bId + '" data-type="' + res + '">' + res + '</td>';
+            } // конец if filteredDays
+        } // конец цикла for d (дни)
+
+        html += `<td class="total">У:${dayCount} Н:${nightCount}</td></tr>`;
+    } // конец цикла for bId (бригады)
+
+    html += `</tbody>`;
+    table.innerHTML = html;
+    return table;
+} // конец функции createTable
+
+/**
+ * Функция бронирования
+ */
+function reserveShift(date, brigade, type, element) {
+    const typeName = (type === 'Д') ? "ДНЕВНУЮ" : "НОЧНУЮ";
+    if (confirm("Забронировать " + typeName + " смену на " + date + "?\n(Бригада №" + brigade + ")")) {
+        element.style.backgroundColor = "#fff9c4"; 
+        alert("Бронируем: " + date + ", Бригада " + brigade);
+    }
+}
+/**
+ * Инициализация и события
+ */
+function initApp() {
+    const ids = ['month', 'year', 'monthsCount', 'daysFilter'];
+    ids.forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', render);
+        }
     });
-});
-
-function reserveShift(data) {
-    console.log('Отправляем на сервер:', data);
-    // Сюда мы впишем Fetch запрос к Nextcloud, когда настроим PHP-контроллер
+    // Слушатель кликов по таблице (Делегирование)
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('clickable')) {
+            const date = e.target.getAttribute('data-date');
+            const brigade = e.target.getAttribute('data-brigade');
+            const type = e.target.getAttribute('data-type');
+            reserveShift(date, brigade, type, e.target);
+        }
+    });
+    render(); // Первый запуск
+}
+// Запуск при загрузке
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
 }
 
-// Запуск при загрузке
-window.onload = function() 
-{
-    setCurrentDate(); // Сначала ставим дату
-    render();         // Потом рисуем таблицу
-};
+// Глобальный доступ
+window.render = render;
